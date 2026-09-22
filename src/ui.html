@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>dsh-ctx 上下文编辑器</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px/1.6 ui-monospace, Consolas, monospace; background: #14161a; color: #d6d9de; }
+  header { display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: #1c1f26; border-bottom: 1px solid #2c313a; flex-wrap: wrap; }
+  button { font: inherit; background: #242830; color: #d6d9de; border: 1px solid #3a4048; border-radius: 4px; padding: 4px 8px; cursor: pointer; }
+  button:hover { background: #2e343e; }
+  button.arm { border-color: #c9a227; color: #e8c96a; }
+  button.go { border-color: #3d8f4f; color: #7fd694; }
+  button.view { border-color: #4a6fa5; color: #8fb8e8; }
+  button.view.on { background: #2a3a52; }
+  input { font: inherit; background: #242830; color: #d6d9de; border: 1px solid #3a4048; border-radius: 4px; padding: 4px 8px; }
+  #status { margin-left: auto; color: #8a93a0; }
+  #status.pending { color: #e8c96a; }
+  main { display: grid; grid-template-columns: 1fr 300px; gap: 0; height: calc(100vh - 49px); }
+  #doc { overflow-y: auto; padding: 10px 18px 10px 78px; outline: none; caret-color: #8fb8e8; position: relative; }
+  #doc:focus { background: #15181d; }
+  #rawview { width: 100%; height: 100%; border: 0; background: #14161a; color: #d6d9de; padding: 12px; font: inherit; overflow-y: auto; white-space: pre-wrap; word-break: break-all; display: none; margin: 0; }
+
+  /* 文档流：角色名放左边距列（不挤压正文）；思考/工具块 = 浮动弹层（展开不占位） */
+  .msg { margin: 8px 0; position: relative; }
+  .msg::before { content: attr(data-rolename); position: absolute; left: -62px; top: 2px; width: 54px; text-align: right; font-size: 9px; user-select: none; pointer-events: none; }
+  .msg[data-role=user]::before { color: #4a6fa5; }
+  .msg[data-role=assistant]::before { color: #3d8f4f; }
+  .msg[data-role=system]::before, .msg[data-role=tool]::before { color: #555c66; }
+  .msg .txt { white-space: pre-wrap; word-break: break-word; min-height: 1.2em; }
+  .chip { display: inline-block; font-size: 10px; color: #5a626e; border: 1px solid #2c313a; border-radius: 3px; padding: 0 6px; cursor: pointer; user-select: none; margin: 0 6px 2px 0; }
+  .chip:hover { color: #8a93a0; border-color: #4a6fa5; }
+  .pop { position: absolute; z-index: 5; max-width: 480px; max-height: 320px; overflow-y: auto; background: #1c1f26; border: 1px solid #3a4048; border-radius: 6px; padding: 8px 10px; box-shadow: 0 4px 16px rgba(0,0,0,.5); font-size: 11px; user-select: text; }
+  .pop pre { white-space: pre-wrap; word-break: break-all; margin: 0; color: #8a93a0; }
+  .cutline { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 9px; color: #3d434c; user-select: none; }
+  .cutline::before, .cutline::after { content: ''; flex: 1; border-top: 1px dashed #2c313a; }
+
+  #ro-banner { display: none; padding: 6px 12px; background: #3d2a1e; color: #c9a227; font-size: 12px; margin-bottom: 8px; }
+  #ro-banner button { font-size: 11px; padding: 2px 8px; margin-left: 8px; }
+
+  aside { border-left: 1px solid #2c313a; padding: 10px; overflow-y: auto; }
+  aside h3 { margin: 4px 0 8px; font-size: 12px; color: #8a93a0; text-transform: uppercase; letter-spacing: .5px; }
+  .ver { background: #1c1f26; border-radius: 4px; padding: 8px; margin-bottom: 8px; font-size: 11px; }
+  .ver .head { display: flex; gap: 6px; align-items: center; }
+  .ver .badge { padding: 0 5px; border-radius: 3px; font-size: 10px; }
+  .ver .badge.active { background: #1e3d26; color: #7fd694; }
+  .ver .badge.absorbed { background: #3d2a1e; color: #c9a227; }
+  .ver .preview { color: #8a93a0; margin: 4px 0; white-space: pre-wrap; word-break: break-all; }
+  .ver button { font-size: 10px; padding: 2px 6px; }
+  aside pre { background: #1c1f26; border-radius: 4px; padding: 8px; white-space: pre-wrap; word-break: break-all; font-size: 11px; max-height: 30vh; overflow-y: auto; }
+  .send { display: flex; gap: 6px; flex: 1; min-width: 160px; }
+  .send input { flex: 1; }
+</style>
+</head>
+<body>
+<header>
+  <input id="sidInput" placeholder="会话 id" size="16" style="width:170px">
+  <button id="sidOpen">打开</button>
+  <div class="send"><input id="sendText" placeholder="发给模型的消息…"><button id="send" class="go">发送</button></div>
+  <button id="hold" class="arm">扣住</button>
+  <button id="release" class="go">放行</button>
+  <button id="compact">压缩</button>
+  <button id="fork">分叉</button>
+  <input id="findTxt" placeholder="查找" size="8" style="width:80px">
+  <input id="repTxt" placeholder="替换为" size="8" style="width:80px">
+  <button id="repAll">全文替换</button>
+  <button id="viewEdit" class="view on">上下文</button>
+  <button id="viewRaw" class="view">日志</button>
+  <button id="apply" class="go">提交修改</button>
+  <span id="status"></span>
+</header>
+<main>
+  <div id="doc"><div id="ro-banner">历史会话 · 只读 <button id="resume">接管会话（变可写）</button></div></div>
+  <pre id="rawview"></pre>
+  <aside>
+    <h3>版本链</h3><div id="versions">—</div>
+    <h3>事件流</h3><pre id="events">—</pre>
+  </aside>
+</main>
+<script>
+const api = (p, b) => fetch(p, { method:'POST', headers:{'content-type':'application/json'}, body: JSON.stringify(b??{}) }).then(r=>r.json())
+const $ = id => document.getElementById(id)
+const sid = new URLSearchParams(location.search).get('session')
+$('sidInput').value = sid ?? ''
+$('sidOpen').onclick = () => { const v = $('sidInput').value.trim(); if (v) location.search = '?session=' + encodeURIComponent(v) }
+const STATE = { armed:'已武装', sticky:'持续扣住', off:'未扣住', released:'已放行' }
+const ROLE = { user:'用户', assistant:'助手', system:'系统', tool:'工具' }
+let dirty = false, readonly = false
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;')
+const docEl = $('doc')
+docEl.addEventListener('input', () => { dirty = true })
+
+function switchView(v) {
+  docEl.style.display = v === 'edit' ? '' : 'none'
+  $('rawview').style.display = v === 'raw' ? 'block' : 'none'
+  $('apply').style.display = v === 'edit' ? '' : 'none'
+  $('viewEdit').className = 'view' + (v === 'edit' ? ' on' : '')
+  $('viewRaw').className = 'view' + (v === 'raw' ? ' on' : '')
+}
+$('viewEdit').onclick = () => switchView('edit')
+$('viewRaw').onclick = () => switchView('raw')
+
+/* 文档编辑器：整篇 contenteditable。
+   .msg[data-seq] = 一个 surface 节点；.txt 是它的可编辑文本；
+   reasoning/工具块 = contenteditable=false 的原子 chip（▸ 思考 可展开）；
+   拖选跨块文本按 Delete = 批量删；段间打字/换行 = 编辑/插入；
+   提交时 DOM diff → ops：消失的 seq=delete，文本变了=edit，无 seq 新段=insertAfter。 */
+function renderDoc(nodes, chains) {
+  const patchedSeqs = new Set((chains ?? []).filter(c => c.versions.length > 1).map(c => c.versions.at(-1).seq))
+  const stash = new Map()
+  if (dirty) docEl.querySelectorAll('.msg[data-seq] .txt').forEach(t => stash.set(t.parentElement.dataset.seq, t.innerText))
+  docEl.innerHTML = ''
+  const banner = document.createElement('div')
+  banner.id = 'ro-banner'
+  banner.innerHTML = `历史会话 · 只读 <button id="resume">接管会话（变可写）</button>`
+  banner.style.display = readonly ? 'block' : 'none'
+  docEl.appendChild(banner)
+  $('resume').onclick = async () => { const r = await api('/resume', { session: sid }); if (r.error) alert(r.error); refresh() }
+  for (const n of nodes) {
+    const div = document.createElement('div')
+    if (n.tombstoned) {
+      // 墓碑 = 删除标记：一条分割线，不占正文体量、不可编辑
+      div.className = 'cutline'
+      div.dataset.seq = n.seq
+      div.textContent = '已删除'
+      div.contentEditable = 'false'
+      docEl.appendChild(div)
+      continue
+    }
+    div.className = 'msg'
+    div.dataset.seq = n.seq
+    div.dataset.role = n.role
+    div.dataset.rolename = (ROLE[n.role] ?? n.role) + (patchedSeqs.has(n.seq) ? ' · 已改' : '')
+    const others = n.content.filter(b => b.type !== 'text')
+    const texts = n.content.filter(b => b.type === 'text').map(b => b.text).join('\n')
+    if (others.length) {
+      const chips = document.createElement('div')
+      chips.contentEditable = 'false'
+      others.forEach((b, bi) => {
+        const chip = document.createElement('span')
+        chip.className = 'chip'
+        chip.textContent = b.type === 'reasoning' ? '▸ 思考' : `▸ ${b.type}${b.name ? ' ' + b.name : ''}`
+        chip.onclick = ev => { ev.stopPropagation(); togglePop(chip, div, b, n.seq, bi) }
+        chips.appendChild(chip)
+      })
+      div.appendChild(chips)
+    }
+    const txt = document.createElement('div')
+    txt.className = 'txt'
+    txt.textContent = texts
+    div.appendChild(txt)
+    if (readonly) txt.contentEditable = 'false'
+    const kept = stash.get(String(n.seq))
+    if (kept !== undefined) txt.textContent = kept
+    docEl.appendChild(div)
+  }
+}
+
+/* 块弹层：reasoning 只读展示；tool-call/tool-result 等 = 可编辑 JSON（提交时整块替换）。
+   改 tool-call 的 id 时服务端自动同步配对 result 的 toolCallId。 */
+let BLK_EDIT = new Map()   // seq → Map<blockIndex, newBlock>
+const closePops = () => document.querySelectorAll('.pop').forEach(p => p.remove())
+function togglePop(chip, host, block, seq, bi) {
+  const existing = host.querySelector('.pop')
+  closePops()
+  if (existing) return
+  const pop = document.createElement('div')
+  pop.className = 'pop'
+  pop.contentEditable = 'false'
+  pop.onclick = ev => ev.stopPropagation()
+  if (block.type === 'reasoning' || readonly) {
+    pop.innerHTML = `<pre>${esc(block.type === 'reasoning' ? (block.text ?? '') : JSON.stringify(block, null, 1))}</pre>`
+  } else {
+    const ta = document.createElement('textarea')
+    ta.value = JSON.stringify(block, null, 1)
+    ta.style.cssText = 'width:440px;height:200px;background:#14161a;color:#d6d9de;border:1px solid #3a4048;border-radius:4px;font:inherit;font-size:11px;padding:6px'
+    const hint = document.createElement('div')
+    hint.style.cssText = 'font-size:10px;color:#5a626e;margin-top:4px'
+    hint.textContent = '编辑块 JSON → 提交修改生效；改 tool-call 的 id 会自动同步配对 result'
+    ta.addEventListener('input', () => {
+      dirty = true
+      try {
+        const parsed = JSON.parse(ta.value)
+        ta.style.borderColor = '#3d8f4f'
+        if (!BLK_EDIT.has(seq)) BLK_EDIT.set(seq, new Map())
+        BLK_EDIT.get(seq).set(bi, parsed)
+      } catch { ta.style.borderColor = '#a5453d' }
+    })
+    pop.appendChild(ta)
+    pop.appendChild(hint)
+  }
+  host.appendChild(pop)
+  const cr = chip.getBoundingClientRect(), hr = host.getBoundingClientRect()
+  pop.style.top = (cr.bottom - hr.top + 2) + 'px'
+  pop.style.left = '0px'
+}
+document.addEventListener('click', closePops)
+document.addEventListener('keydown', ev => { if (ev.key === 'Escape') closePops() })
+
+async function submitAll() {
+  if (readonly) { alert('历史会话只读，无法提交'); return }
+  const ops = []
+  const seen = new Set(), present = new Set()
+  let prevSeq = null
+  for (const div of docEl.querySelectorAll('.msg')) {
+    const txt = div.querySelector('.txt')
+    if (!txt) continue
+    const seqAttr = div.dataset.seq
+    const seq = seqAttr === '' || seqAttr == null ? null : Number(seqAttr)
+    const val = txt.innerText.replace(/\n+$/, '')
+    if (seq === null || seen.has(seq)) {
+      if (val.trim()) ops.push({ kind: 'insertAfter', seq: prevSeq, text: val.trim() })
+      continue
+    }
+    seen.add(seq)
+    present.add(seq)
+    prevSeq = seq
+    if (div.classList.contains('tomb')) continue
+    const orig = ORIG.get(seq) ?? ''
+    if (val !== orig) {
+      if (val.trim() === '') ops.push({ kind: 'delete', seq })
+      else ops.push({ kind: 'edit', seq, text: val })
+    }
+  }
+  for (const seq of ORIG.keys())
+    if (!present.has(seq) && !TOMB.has(seq)) ops.push({ kind: 'delete', seq })
+  // 块级编辑（tool-call/tool-result 等）：克隆原 content 数组，换上改过的块
+  for (const [seq, edits] of BLK_EDIT) {
+    if (ops.some(o => o.seq === seq && o.kind === 'edit')) continue  // 文本编辑已接管该节点
+    const base = NODE_CONTENT.get(seq)
+    if (!base) continue
+    const content = [...base]
+    const nonTextIdxs = content.map((b, i) => b.type !== 'text' ? i : -1).filter(i => i >= 0)
+    for (const [bi, nb] of edits) if (nonTextIdxs[bi] !== undefined) content[nonTextIdxs[bi]] = nb
+    ops.push({ kind: 'edit', seq, content })
+  }
+  if (!ops.length) { dirty = false; return }
+  const dels = ops.filter(o => o.kind === 'delete').length
+  if (dels && !confirm(`${dels} 条消息将被删除（tombstone，可回退）。继续？`)) return
+  const r = await api('/ops', { session: sid, ops })
+  if (r.error || r.ok === false) alert('被拒：\n' + (r.error ?? (r.problems ?? []).join('\n')))
+  dirty = false
+  refresh()
+}
+
+$('repAll').onclick = async () => {
+  if (readonly) { alert('历史会话只读'); return }
+  const find = $('findTxt').value
+  if (!find) return
+  const rep = $('repTxt').value
+  const ops = []
+  for (const [seq, text] of ORIG) {
+    if (TOMB.has(seq)) continue
+    if (text.includes(find)) ops.push({ kind: 'edit', seq, text: text.split(find).join(rep) })
+  }
+  if (!ops.length) { alert('没有匹配的文本'); return }
+  const r = await api('/ops', { session: sid, ops })
+  if (r.error || r.ok === false) alert('被拒：\n' + (r.error ?? (r.problems ?? []).join('\n')))
+  dirty = false
+  refresh()
+}
+
+async function revertTo(target, seq) {
+  const r = await api('/revert', { session: sid, target, seq })
+  if (r.error) alert(r.error)
+  if (r.skipped) alert(r.skipped)
+  dirty = false
+  refresh()
+}
+
+function renderVersions(chains) {
+  const box = $('versions')
+  const edited = chains.filter(c => c.versions.length > 1)
+  if (!edited.length) { box.innerHTML = '<div style="color:#5a626e">还没有版本改动</div>'; return }
+  box.innerHTML = edited.map(c => {
+    const headText = c.versions.find(v => v.state === 'active')?.text
+    return `<div style="color:#8a93a0;font-size:10px;margin:6px 0 2px">节点 seq=${c.target}</div>` +
+      c.versions.map(v => `
+        <div class="ver">
+          <div class="head">
+            <b>seq=${v.seq}</b>
+            <span class="badge ${v.state}">${v.state === 'active' ? '当前' : '旧版'}</span>
+            ${v.state === 'absorbed' && v.text !== headText ? `<button data-t="${c.target}" data-s="${v.seq}">回退到此版</button>` : ''}
+          </div>
+          <div class="preview">${esc(v.preview || '[删除]')}</div>
+        </div>`).join('')
+  }).join('')
+  box.querySelectorAll('button[data-t]').forEach(b => b.onclick = () => revertTo(b.dataset.t, b.dataset.s))
+}
+
+let ORIG = new Map(), TOMB = new Set(), NODE_CONTENT = new Map(), lastSig = ''
+
+async function refresh() {
+  if (!sid) { $('status').textContent = '请在会话中打开本面板'; return }
+  const [st, ev, raw, vers, wire] = await Promise.all([
+    api('/status', {session:sid}), api('/events', {session:sid}),
+    api('/raw', {session:sid}), api('/versions', {session:sid}), api('/wire', {session:sid}),
+  ])
+  readonly = wire.live === false
+  docEl.contentEditable = readonly ? 'false' : 'true'
+  $('apply').style.display = readonly ? 'none' : ''
+  $('status').textContent = `${readonly ? '只读 · ' : ''}${STATE[st.state] ?? st.state ?? ''}${st.pending?' · 待放行':''}`
+  $('status').className = st.pending ? 'pending' : ''
+  // 正文只在内容真变且没在编辑时重绘 —— 8s 轮询不再抢焦点/清选区
+  const sig = JSON.stringify(wire.nodes) + '|' + readonly
+  if (!dirty && sig !== lastSig) {
+    lastSig = sig
+    ORIG = new Map()
+    TOMB = new Set()
+    NODE_CONTENT = new Map()
+    BLK_EDIT = new Map()
+    for (const n of wire.nodes ?? []) {
+      ORIG.set(n.seq, n.content.filter(b => b.type === 'text').map(b => b.text).join('\n'))
+      NODE_CONTENT.set(n.seq, n.content)
+      if (n.tombstoned) TOMB.add(n.seq)
+    }
+    renderDoc(wire.nodes ?? [], vers.chains)
+  }
+  $('rawview').textContent = (raw.events??[]).map(e =>
+    `── seq=${e.seq} ${e.type}${e.surfaceOp?`  surfaceOp=${JSON.stringify(e.surfaceOp)}`:''}${e.sourceEventSeqs?`  src=${JSON.stringify(e.sourceEventSeqs)}`:''}\n${JSON.stringify(e.data,null,1)}`
+  ).join('\n\n')
+  $('events').textContent = (ev.events??[]).map(e=>`${e.seq} ${e.type}`).join('\n')
+  renderVersions(vers.chains ?? [])
+}
+
+$('send').onclick = async () => { await api('/send', {session:sid, text:$('sendText').value}); $('sendText').value=''; setTimeout(refresh, 3000) }
+$('hold').onclick = async () => { await api('/hold', {session:sid}); refresh() }
+$('release').onclick = async () => { await api('/release', {session:sid}); setTimeout(refresh, 3000) }
+$('compact').onclick = async () => { const r = await api('/compact', {session:sid}); alert(JSON.stringify(r)); refresh() }
+$('fork').onclick = async () => { const r = await api('/fork', {session:sid}); alert(JSON.stringify(r)); refresh() }
+$('apply').onclick = submitAll
+setInterval(refresh, 8000)
+refresh()
+</script>
+</body>
+</html>

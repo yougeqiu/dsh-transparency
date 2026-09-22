@@ -1,0 +1,19 @@
+{
+  "name": "dsh-transparency",
+  "version": "0.0.1",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "description": "Transparent-agent spike plugin: context editing as session-log projections",
+  "bin": { "dsh-ctx": "bin/dsh-ctx.mjs" },
+  "exports": {
+    ".": "./src/plugin.mjs",
+    "./client": "./src/client.js",
+    "./src/*": "./src/*"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web"
+    }
+  }
+}
