@@ -1,6 +1,6 @@
 # tests
 
-Spike 探针与单测，原生于 [deepseek-harness](https://github.com/deepseek-harness) 仓库（`spike/transparency-probes` 分支）。这些 spec import harness 内部包（`@deepseek-ai/dsh-session`、`@deepseek-ai/dsh-agent-loop` 等），需要在一个 dsharness workspace 里用 vitest 跑（`pnpm install` 后 `pnpm vitest run <spec>`）。
+Spike 探针与单测，原生于 [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 仓库（`spike/transparency-probes` 分支）。这些 spec import harness 内部包（`@deepseek-ai/dsh-session`、`@deepseek-ai/dsh-agent-loop` 等），需要在一个 dsharness workspace 里用 vitest 跑（`pnpm install` 后 `pnpm vitest run <spec>`）。
 
 | 文件 | 覆盖 |
 |---|---|

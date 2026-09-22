@@ -1,6 +1,6 @@
 # dsh-transparency
 
-Transparent-agent spike plugin for [DeepSeek Harness (DSH)](https://github.com/deepseek-harness) — **context editing as session-log projections**.
+Transparent-agent spike plugin for [DeepSeek Harness (DSH)](https://github.com/deepseek-ai/deepseek-harness) — **context editing as session-log projections**.
 
 对运行中的 Agent 会话直接编辑"模型可见的上下文"：改文本、删消息、加批注、区间删除、回退版本——所有修改都以 append-only 的一方事件落进 session 日志，不引入任何外挂事件类型。
 
@@ -67,7 +67,7 @@ dsh-ctx release <session>                    # 放行
 
 ## 定位
 
-这是「[Petri — 面向上下文的 Agent 基础设施](https://github.com/yougeqiu)」设想的 DSH 内 spike：块级上下文编辑、版本链、hold-and-modify、fork 都先在这个插件里用 harness 原生 `surfaceOp` 机制验证过。生态位对照（SERAC / Anthropic context editing / LangGraph checkpointer 等）见设计文档。
+这是「Petri —— 面向上下文的 Agent 基础设施」设想的 DSH 内 spike：块级上下文编辑、版本链、hold-and-modify、fork 都先在这个插件里用 harness 原生 `surfaceOp` 机制验证过。生态位对照（SERAC / Anthropic context editing / LangGraph checkpointer 等）见设计文档。
 
 ## License
 
